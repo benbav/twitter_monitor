@@ -1,0 +1,35 @@
+{
+  "cookies": [
+    {
+      "name": "auth_token",
+      "value": "PASTE_AUTH_TOKEN_HERE",
+      "domain": ".x.com",
+      "path": "/",
+      "expires": 1799999999,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "ct0",
+      "value": "PASTE_CT0_HERE",
+      "domain": ".x.com",
+      "path": "/",
+      "expires": 1799999999,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "twid",
+      "value": "PASTE_TWID_HERE",
+      "domain": ".x.com",
+      "path": "/",
+      "expires": 1799999999,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    }
+  ],
+  "origins": []
+}

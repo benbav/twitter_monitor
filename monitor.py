@@ -25,8 +25,13 @@ BASE_DIR = Path(__file__).resolve().parent
 STATE_PATH = BASE_DIR / "storage" / "state.json"
 DATA_DIR = BASE_DIR / "data"
 SCREENSHOTS_DIR = BASE_DIR / "screenshots"
+ENV_PATH = BASE_DIR / ".env"
 
-load_dotenv(BASE_DIR / ".env")
+if not ENV_PATH.exists():
+    ENV_PATH.write_text((BASE_DIR / ".env.example").read_text())
+    sys.exit(f"Created {ENV_PATH} from template -- fill in your credentials, then re-run.")
+
+load_dotenv(ENV_PATH)
 
 
 def load_existing(handle):

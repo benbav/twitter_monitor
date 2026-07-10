@@ -18,6 +18,8 @@ STATE_PATH = BASE_DIR / "storage" / "state.json"
 
 
 def export():
+    PROFILE_DIR.mkdir(parents=True, exist_ok=True)
+
     with sync_playwright() as p:
         context = p.chromium.launch_persistent_context(
             user_data_dir=str(PROFILE_DIR),

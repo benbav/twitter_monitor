@@ -5,5 +5,6 @@ __pycache__/
 /screenshots
 /data
 /output
-/storage
 storage/state.json
+storage/chrome_profile/
+!storage/state.example.json
