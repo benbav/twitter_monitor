@@ -126,6 +126,7 @@ def scrape(handle, limit, max_scrolls, headless, include_retweets, include_repli
 
         if "login" in page.url or "flow/login" in page.url:
             browser.close()
+            alert_email.send_session_expired_alert(handle)
             sys.exit("Session expired (redirected to login). Re-run auth.py or export_session.py and copy the new storage/state.json here.")
 
         try:
