@@ -3,8 +3,12 @@ __pycache__/
 *.pyc
 .env
 /screenshots
-/data
+/data/*
+!/data/threats
 /output
+/logs
 storage/state.json
 storage/chrome_profile/
 !storage/state.example.json
+/config/watch_names.txt
+/config/threat_words.txt

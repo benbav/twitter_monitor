@@ -14,6 +14,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -21,10 +22,16 @@ from pathlib import Path
 from dotenv import load_dotenv
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
+import alert_email
+import threat_detect
+
 BASE_DIR = Path(__file__).resolve().parent
 STATE_PATH = BASE_DIR / "storage" / "state.json"
 DATA_DIR = BASE_DIR / "data"
 SCREENSHOTS_DIR = BASE_DIR / "screenshots"
+LOGS_DIR = BASE_DIR / "logs"
+THREATS_LOG_PATH = LOGS_DIR / "threats.log"
+THREATS_DIR = DATA_DIR / "threats"
 ENV_PATH = BASE_DIR / ".env"
 
 if not ENV_PATH.exists():
@@ -46,6 +53,32 @@ def save_all(handle, tweets_by_id):
     path = DATA_DIR / f"{handle}.json"
     ordered = sorted(tweets_by_id.values(), key=lambda t: int(t["id"]), reverse=True)
     path.write_text(json.dumps(ordered, indent=2, ensure_ascii=False))
+
+
+def log_flagged_tweet(record, flags):
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
+    tags = []
+    if flags["threat_matches"]:
+        tags.append("THREAT flags=" + ",".join(flags["threat_matches"]))
+    if flags["name_matches"]:
+        tags.append("NAME flags=" + ",".join(flags["name_matches"]))
+    line = (
+        f'{time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())} '
+        f'[{record["handle"]}] {" | ".join(tags)} '
+        f'url={record["url"]} text="{record["text"]}"\n'
+    )
+    with THREATS_LOG_PATH.open("a", encoding="utf-8") as f:
+        f.write(line)
+    print(f"FLAGGED tweet {record['id']}: {' | '.join(tags)}")
+
+
+def save_threat_evidence(handle, record, screenshot_src):
+    evidence_dir = THREATS_DIR / handle
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(screenshot_src, evidence_dir / f"{record['id']}.png")
+    (evidence_dir / f"{record['id']}.json").write_text(
+        json.dumps(record, indent=2, ensure_ascii=False)
+    )
 
 
 def extract_tweet_id(article):
@@ -81,6 +114,7 @@ def scrape(handle, limit, max_scrolls, headless, include_retweets, include_repli
     existing = load_existing(handle)
     shot_dir = SCREENSHOTS_DIR / handle
     shot_dir.mkdir(parents=True, exist_ok=True)
+    threat_pattern, name_pattern = threat_detect.load_patterns()
 
     new_records = {}
 
@@ -138,7 +172,9 @@ def scrape(handle, limit, max_scrolls, headless, include_retweets, include_repli
                     print(f"Could not screenshot tweet {tweet_id}: {e}")
                     continue
 
-                new_records[tweet_id] = {
+                flags = threat_detect.scan(text, threat_pattern, name_pattern)
+
+                record = {
                     "id": tweet_id,
                     "handle": handle,
                     "url": f"https://x.com/{handle}/status/{tweet_id}",
@@ -146,9 +182,17 @@ def scrape(handle, limit, max_scrolls, headless, include_retweets, include_repli
                     "timestamp": timestamp,
                     "screenshot": str(screenshot_path.relative_to(BASE_DIR)),
                     "scraped_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    "threat_matches": flags["threat_matches"],
+                    "name_matches": flags["name_matches"],
                 }
+                new_records[tweet_id] = record
                 found_new_this_pass = True
                 print(f"Saved tweet {tweet_id}")
+
+                if flags["threat_matches"] or flags["name_matches"]:
+                    log_flagged_tweet(record, flags)
+                    save_threat_evidence(handle, record, screenshot_path)
+                    alert_email.send_threat_alert(record, flags, screenshot_path)
 
             stale_scrolls = 0 if found_new_this_pass else stale_scrolls + 1
             if stale_scrolls >= 4:
