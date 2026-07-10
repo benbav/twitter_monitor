@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cp \"/Users/benbavonese1/Desktop/twitter_monitor/storage/chrome_profile/Default/Cookies\" /tmp/cookies_check.db)",
+      "Bash(sqlite3 /tmp/cookies_check.db \"select host_key, name, length\\(encrypted_value\\) from cookies where host_key like '%x.com%' order by name;\")",
+      "Bash(open *)",
+      "Bash(date *)",
+      "Bash(python3 -c ' *)",
+      "Bash(gh auth *)",
+      "Bash(git --version)",
+      "Bash(brew install *)",
+      "Bash(brew doctor *)",
+      "Bash(brew --prefix)"
+    ]
+  }
+}

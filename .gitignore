@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+/screenshots
+/data
+/output
+/storage
+storage/state.json
