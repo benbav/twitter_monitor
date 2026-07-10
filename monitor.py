@@ -90,6 +90,10 @@ def scrape(handle, limit, max_scrolls, headless, include_retweets, include_repli
         page = context.new_page()
         page.goto(f"https://x.com/{handle}", wait_until="domcontentloaded")
 
+        if "login" in page.url or "flow/login" in page.url:
+            browser.close()
+            sys.exit("Session expired (redirected to login). Re-run auth.py or export_session.py and copy the new storage/state.json here.")
+
         try:
             page.wait_for_selector('article[data-testid="tweet"]', timeout=30_000)
         except PWTimeout:
