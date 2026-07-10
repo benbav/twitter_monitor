@@ -72,6 +72,25 @@ def log_flagged_tweet(record, flags):
     print(f"FLAGGED tweet {record['id']}: {' | '.join(tags)}")
 
 
+def prune_screenshots(handle, keep=100):
+    """Delete oldest screenshots beyond `keep` for this handle. Threat evidence
+    lives separately in data/threats/<handle>/ (via save_threat_evidence) and is
+    never touched here."""
+    shot_dir = SCREENSHOTS_DIR / handle
+    if not shot_dir.exists():
+        return
+
+    files = [f for f in shot_dir.glob("*.png") if f.stem.isdigit()]
+    files.sort(key=lambda f: int(f.stem))  # tweet snowflake IDs sort chronologically
+    if len(files) <= keep:
+        return
+
+    to_delete = files[: len(files) - keep]
+    for f in to_delete:
+        f.unlink()
+    print(f"Pruned {len(to_delete)} old screenshot(s) for @{handle} (kept newest {keep}); threat evidence retained in data/threats/{handle}/")
+
+
 def save_threat_evidence(handle, record, screenshot_src):
     evidence_dir = THREATS_DIR / handle
     evidence_dir.mkdir(parents=True, exist_ok=True)
@@ -118,6 +137,24 @@ def scrape(handle, limit, max_scrolls, headless, include_retweets, include_repli
 
     new_records = {}
 
+    try:
+        _scrape_inner(
+            handle, limit, max_scrolls, headless, include_retweets, include_replies,
+            existing, shot_dir, threat_pattern, name_pattern, new_records,
+        )
+    finally:
+        if new_records:
+            existing.update(new_records)
+            save_all(handle, existing)
+
+    prune_screenshots(handle)
+    print(f"Done. {len(new_records)} new tweet(s) saved for @{handle}.")
+
+
+def _scrape_inner(
+    handle, limit, max_scrolls, headless, include_retweets, include_replies,
+    existing, shot_dir, threat_pattern, name_pattern, new_records,
+):
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=headless)
         context = browser.new_context(storage_state=str(STATE_PATH))
@@ -125,6 +162,12 @@ def scrape(handle, limit, max_scrolls, headless, include_retweets, include_repli
         page.goto(f"https://x.com/{handle}", wait_until="domcontentloaded")
 
         if "login" in page.url or "flow/login" in page.url:
+            debug_shot = LOGS_DIR / "session_expired_debug.png"
+            try:
+                page.screenshot(path=str(debug_shot), full_page=True)
+            except Exception as e:
+                print(f"Could not capture debug screenshot: {e}")
+            print(f"Redirected to: {page.url}")
             browser.close()
             alert_email.send_session_expired_alert(handle)
             sys.exit("Session expired (redirected to login). Re-run auth.py or export_session.py and copy the new storage/state.json here.")
@@ -148,22 +191,26 @@ def scrape(handle, limit, max_scrolls, headless, include_retweets, include_repli
                 if len(new_records) >= limit:
                     break
                 article = articles.nth(i)
-                tweet_id = extract_tweet_id(article)
-                if not tweet_id or tweet_id in existing or tweet_id in new_records:
-                    continue
+                try:
+                    tweet_id = extract_tweet_id(article)
+                    if not tweet_id or tweet_id in existing or tweet_id in new_records:
+                        continue
 
-                if is_retweet(article) and not include_retweets:
-                    continue
-                if is_reply(article) and not include_replies:
-                    continue
+                    if is_retweet(article) and not include_retweets:
+                        continue
+                    if is_reply(article) and not include_replies:
+                        continue
 
-                text_el = article.locator('[data-testid="tweetText"]')
-                text = text_el.first.inner_text() if text_el.count() else ""
-                if not text.strip():
-                    continue  # media-only post, not a text post
+                    text_el = article.locator('[data-testid="tweetText"]')
+                    text = text_el.first.inner_text() if text_el.count() else ""
+                    if not text.strip():
+                        continue  # media-only post, not a text post
 
-                time_el = article.locator("time").first
-                timestamp = time_el.get_attribute("datetime") if time_el.count() else None
+                    time_el = article.locator("time").first
+                    timestamp = time_el.get_attribute("datetime") if time_el.count() else None
+                except Exception as e:
+                    print(f"Skipping a tweet (stale/detached element while reading content): {e}")
+                    continue
 
                 screenshot_path = shot_dir / f"{tweet_id}.png"
                 try:
@@ -205,11 +252,6 @@ def scrape(handle, limit, max_scrolls, headless, include_retweets, include_repli
         # Refresh cookies (they rotate) so the session stays valid longer.
         context.storage_state(path=str(STATE_PATH))
         browser.close()
-
-    if new_records:
-        existing.update(new_records)
-        save_all(handle, existing)
-    print(f"Done. {len(new_records)} new tweet(s) saved for @{handle}.")
 
 
 def main():

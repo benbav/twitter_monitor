@@ -3,8 +3,7 @@ __pycache__/
 *.pyc
 .env
 /screenshots
-/data/*
-!/data/threats
+/data/
 /output
 /logs
 storage/state.json

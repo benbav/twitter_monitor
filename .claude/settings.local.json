@@ -24,7 +24,12 @@
       "Bash(ssh *)",
       "Bash(git remote *)",
       "Bash(python3 *)",
-      "Bash(echo \"exit code: $?\")"
+      "Bash(echo \"exit code: $?\")",
+      "Bash(sudo grep -i \"twitter_monitor\\\\|CRON\" /var/log/syslog)",
+      "Bash(journalctl -u cron --since \"2 days ago\")",
+      "Bash(journalctl -u cron --since \"2026-07-09 00:00:00\" --until \"2026-07-10 06:00:00\")",
+      "Bash(env -i HOME=/home/ubuntu LOGNAME=ubuntu USER=ubuntu PATH=/usr/bin:/bin SHELL=/bin/sh /home/ubuntu/twitter_monitor/.venv/bin/python monitor.py)",
+      "Bash(echo \"EXIT CODE: $?\")"
     ]
   }
 }
