@@ -1,8 +1,10 @@
 # twitter_monitor
 
-Archives a Twitter/X account's original text posts: screenshots each tweet as
-a PNG and saves its text/metadata to JSON. Built with Python + Playwright.
-Safe to re-run (e.g. via cron) — already-saved tweets are skipped.
+Archives a Twitter/X account's original text posts: saves each tweet's
+text/metadata to JSON. Only tweets flagged for threat words or watched names
+(see `threat_detect.py`) get a screenshot, kept as evidence in
+`data/threats/<handle>/`. Built with Python + Playwright. Safe to re-run
+(e.g. via cron) — already-saved tweets are skipped.
 
 Perfect for gathering court evidence for getting a restraining order against a mentally ill family member!
 
@@ -56,8 +58,8 @@ python monitor.py --limit 20 --include-retweets --include-replies
 ```
 
 Output:
-- `screenshots/<handle>/<tweet_id>.png`
-- `data/<handle>.json` — `{id, url, text, timestamp, screenshot, scraped_at}` per tweet
+- `data/<handle>.json` — `{id, url, text, timestamp, screenshot, scraped_at, threat_matches, name_matches}` per tweet (`screenshot` is `null` unless the tweet was flagged)
+- `data/threats/<handle>/<tweet_id>.png` + `.json` — evidence for flagged tweets only
 
 ## Deploying headless (e.g. AWS Lightsail)
 

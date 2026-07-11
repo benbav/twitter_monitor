@@ -1,7 +1,8 @@
 """
-Scrape a Twitter/X profile's original text posts, saving a screenshot of
-each tweet plus its text/metadata to a JSON file. Safe to re-run on a
-schedule (e.g. cron) -- already-saved tweets are skipped.
+Scrape a Twitter/X profile's original text posts, saving text/metadata to a
+JSON file. Only tweets flagged by threat_detect (threat words or watched
+names) get a screenshot, saved as evidence under data/threats/<handle>/.
+Safe to re-run on a schedule (e.g. cron) -- already-saved tweets are skipped.
 
 Requires storage/state.json to exist first (see auth.py). Runs fully
 headless by default, so it's fine on a server with no display.
@@ -14,7 +15,6 @@ import argparse
 import json
 import os
 import re
-import shutil
 import sys
 import time
 from pathlib import Path
@@ -28,7 +28,6 @@ import threat_detect
 BASE_DIR = Path(__file__).resolve().parent
 STATE_PATH = BASE_DIR / "storage" / "state.json"
 DATA_DIR = BASE_DIR / "data"
-SCREENSHOTS_DIR = BASE_DIR / "screenshots"
 LOGS_DIR = BASE_DIR / "logs"
 THREATS_LOG_PATH = LOGS_DIR / "threats.log"
 THREATS_DIR = DATA_DIR / "threats"
@@ -72,32 +71,19 @@ def log_flagged_tweet(record, flags):
     print(f"FLAGGED tweet {record['id']}: {' | '.join(tags)}")
 
 
-def prune_screenshots(handle, keep=100):
-    """Delete oldest screenshots beyond `keep` for this handle. Threat evidence
-    lives separately in data/threats/<handle>/ (via save_threat_evidence) and is
-    never touched here."""
-    shot_dir = SCREENSHOTS_DIR / handle
-    if not shot_dir.exists():
-        return
-
-    files = [f for f in shot_dir.glob("*.png") if f.stem.isdigit()]
-    files.sort(key=lambda f: int(f.stem))  # tweet snowflake IDs sort chronologically
-    if len(files) <= keep:
-        return
-
-    to_delete = files[: len(files) - keep]
-    for f in to_delete:
-        f.unlink()
-    print(f"Pruned {len(to_delete)} old screenshot(s) for @{handle} (kept newest {keep}); threat evidence retained in data/threats/{handle}/")
-
-
-def save_threat_evidence(handle, record, screenshot_src):
+def save_threat_evidence(handle, record, article):
+    """Screenshot a flagged tweet and save it plus its metadata under
+    data/threats/<handle>/. This is the only place tweets get screenshotted."""
     evidence_dir = THREATS_DIR / handle
     evidence_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(screenshot_src, evidence_dir / f"{record['id']}.png")
+    screenshot_path = evidence_dir / f"{record['id']}.png"
+    article.scroll_into_view_if_needed()
+    article.screenshot(path=str(screenshot_path))
+    record["screenshot"] = str(screenshot_path.relative_to(BASE_DIR))
     (evidence_dir / f"{record['id']}.json").write_text(
         json.dumps(record, indent=2, ensure_ascii=False)
     )
+    return screenshot_path
 
 
 def extract_tweet_id(article):
@@ -131,8 +117,6 @@ def scrape(handle, limit, max_scrolls, headless, include_retweets, include_repli
         sys.exit("No saved session found at storage/state.json. Run auth.py first (with a display) and copy it here.")
 
     existing = load_existing(handle)
-    shot_dir = SCREENSHOTS_DIR / handle
-    shot_dir.mkdir(parents=True, exist_ok=True)
     threat_pattern, name_pattern = threat_detect.load_patterns()
 
     new_records = {}
@@ -140,20 +124,19 @@ def scrape(handle, limit, max_scrolls, headless, include_retweets, include_repli
     try:
         _scrape_inner(
             handle, limit, max_scrolls, headless, include_retweets, include_replies,
-            existing, shot_dir, threat_pattern, name_pattern, new_records,
+            existing, threat_pattern, name_pattern, new_records,
         )
     finally:
         if new_records:
             existing.update(new_records)
             save_all(handle, existing)
 
-    prune_screenshots(handle)
     print(f"Done. {len(new_records)} new tweet(s) saved for @{handle}.")
 
 
 def _scrape_inner(
     handle, limit, max_scrolls, headless, include_retweets, include_replies,
-    existing, shot_dir, threat_pattern, name_pattern, new_records,
+    existing, threat_pattern, name_pattern, new_records,
 ):
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=headless)
@@ -212,14 +195,6 @@ def _scrape_inner(
                     print(f"Skipping a tweet (stale/detached element while reading content): {e}")
                     continue
 
-                screenshot_path = shot_dir / f"{tweet_id}.png"
-                try:
-                    article.scroll_into_view_if_needed()
-                    article.screenshot(path=str(screenshot_path))
-                except Exception as e:
-                    print(f"Could not screenshot tweet {tweet_id}: {e}")
-                    continue
-
                 flags = threat_detect.scan(text, threat_pattern, name_pattern)
 
                 record = {
@@ -228,7 +203,7 @@ def _scrape_inner(
                     "url": f"https://x.com/{handle}/status/{tweet_id}",
                     "text": text,
                     "timestamp": timestamp,
-                    "screenshot": str(screenshot_path.relative_to(BASE_DIR)),
+                    "screenshot": None,
                     "scraped_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                     "threat_matches": flags["threat_matches"],
                     "name_matches": flags["name_matches"],
@@ -238,8 +213,12 @@ def _scrape_inner(
                 print(f"Saved tweet {tweet_id}")
 
                 if flags["threat_matches"] or flags["name_matches"]:
+                    try:
+                        screenshot_path = save_threat_evidence(handle, record, article)
+                    except Exception as e:
+                        print(f"Could not screenshot flagged tweet {tweet_id}: {e}")
+                        screenshot_path = None
                     log_flagged_tweet(record, flags)
-                    save_threat_evidence(handle, record, screenshot_path)
                     alert_email.send_threat_alert(record, flags, screenshot_path)
 
             stale_scrolls = 0 if found_new_this_pass else stale_scrolls + 1
@@ -257,7 +236,7 @@ def _scrape_inner(
 def main():
     default_handle = os.environ.get("TARGET_HANDLE", "").lstrip("@") or None
 
-    parser = argparse.ArgumentParser(description="Screenshot and archive a Twitter/X account's text posts.")
+    parser = argparse.ArgumentParser(description="Archive a Twitter/X account's text posts, screenshotting only flagged (threat/name) tweets.")
     parser.add_argument(
         "handle",
         nargs="?",
