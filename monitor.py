@@ -274,6 +274,8 @@ def main():
     if not args.handle:
         sys.exit("No handle given and TARGET_HANDLE not set in .env.")
 
+    print(f'=== Run started {time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())} ===')
+
     scrape(
         handle=args.handle,
         limit=args.limit,

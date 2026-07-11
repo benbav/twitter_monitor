@@ -4,7 +4,7 @@ Archives a Twitter/X account's original text posts: screenshots each tweet as
 a PNG and saves its text/metadata to JSON. Built with Python + Playwright.
 Safe to re-run (e.g. via cron) — already-saved tweets are skipped.
 
-Perfect for gathering court evidence to get a restraining order against a mentally ill family member!
+Perfect for gathering court evidence for getting a restraining order against a mentally ill family member!
 
 ## Setup
 
