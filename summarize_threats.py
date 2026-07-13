@@ -32,7 +32,7 @@ def load_records(handle_filter=None):
             continue
         for json_path in handle_dir.glob("*.json"):
             records.append(json.loads(json_path.read_text(encoding="utf-8")))
-    records.sort(key=lambda r: r.get("timestamp") or "")
+    records.sort(key=lambda r: r.get("timestamp") or "", reverse=True)
     return records
 
 
