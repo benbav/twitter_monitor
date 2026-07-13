@@ -73,14 +73,19 @@ def log_flagged_tweet(record, flags):
 
 def save_threat_evidence(handle, record, article):
     """Screenshot a flagged tweet and save it plus its metadata under
-    data/threats/<handle>/. This is the only place tweets get screenshotted."""
+    data/threats/<handle>/. This is the only place tweets get screenshotted.
+
+    Filenames are date-prefixed (from scraped_at) so a plain alphabetical sort
+    -- e.g. in a file browser -- doubles as a chronological sort."""
     evidence_dir = THREATS_DIR / handle
     evidence_dir.mkdir(parents=True, exist_ok=True)
-    screenshot_path = evidence_dir / f"{record['id']}.png"
+    date_prefix = record["scraped_at"].replace(":", "-")
+    base_name = f"{date_prefix}_{record['id']}"
+    screenshot_path = evidence_dir / f"{base_name}.png"
     article.scroll_into_view_if_needed()
     article.screenshot(path=str(screenshot_path))
     record["screenshot"] = str(screenshot_path.relative_to(BASE_DIR))
-    (evidence_dir / f"{record['id']}.json").write_text(
+    (evidence_dir / f"{base_name}.json").write_text(
         json.dumps(record, indent=2, ensure_ascii=False)
     )
     return screenshot_path
